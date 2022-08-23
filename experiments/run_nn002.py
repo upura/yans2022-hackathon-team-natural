@@ -15,7 +15,8 @@ from transformers import AutoConfig, AutoModel, AutoTokenizer
 
 FOLD_ID = 0
 EXPERIMENT_NAME = "predict_helpful_votes"
-RUN_NAME = "cl-tohoku_bert-large-japanese_lr1e-5"
+MODEL_PATH = "cl-tohoku/bert-large-japanese"
+RUN_NAME = f"{MODEL_PATH}_lr1e-5"
 
 
 class ReviewDataset(Dataset):
@@ -26,6 +27,8 @@ class ReviewDataset(Dataset):
             inputs = tokenizer(df_dict["review_body"], truncation=True, max_length=512)
             if "label" in df_dict:
                 inputs.update({"label": df_dict["label"]})
+            inputs.update({"product_idx": df_dict["product_idx"]})
+            inputs.update({"review_idx": df_dict["review_idx"]})
             self.out_inputs.append(inputs)
 
     def __len__(self):
@@ -90,6 +93,10 @@ class ReviewDataModule(pl.LightningDataModule):
                 [torch.LongTensor(b[i]) for b in batch],
                 batch_first=True,
             )
+        output_dict["product_idx"] = torch.IntTensor(
+            [[b["product_idx"]] for b in batch]
+        )
+        output_dict["review_idx"] = torch.IntTensor([[b["review_idx"]] for b in batch])
         if "label" in batch[0]:
             output_dict["label"] = torch.FloatTensor([[b["label"]] for b in batch])
         return output_dict
@@ -135,26 +142,102 @@ class ReviewRegressionNet(pl.LightningModule):
         output = self.forward(batch)
         loss = self.criterion(output, batch["label"])
         rmse = self._compute_rmse(output, batch["label"])
-        return {"loss": loss, "rmse": rmse}
+        return {
+            "loss": loss,
+            "rmse": rmse,
+            "y_pred": output,
+            "label": batch["label"],
+            "product_idx": batch["product_idx"],
+            "review_idx": batch["review_idx"],
+        }
 
     def training_epoch_end(self, outputs):
         avg_loss = torch.stack([x["loss"] for x in outputs]).mean()
         avg_rmse = torch.stack([x["rmse"] for x in outputs]).mean()
+        y_preds = torch.stack([x["y_pred"] for x in outputs])
+        labels = torch.stack([x["label"] for x in outputs])
+        product_idxs = torch.stack([x["product_idx"] for x in outputs])
+        review_idxs = torch.stack([x["review_idx"] for x in outputs])
         self.log("train_loss", avg_loss.detach(), on_epoch=True, prog_bar=True)
         self.log("train_rmse", avg_rmse.detach(), on_epoch=True, prog_bar=True)
+
+        df = pd.DataFrame(
+            {
+                "review_idx": list(review_idxs.detach().cpu().numpy().reshape(-1)),
+                "product_idx": list(product_idxs.detach().cpu().numpy().reshape(-1)),
+                "helpful_votes": list(labels.detach().cpu().numpy().reshape(-1)),
+            }
+        )
+        df["pred_helpful_votes"] = y_preds.detach().cpu().numpy().reshape(-1)
+        df_pred = convert_to_submit_format(df, "pred_helpful_votes", "pred")
+        df_true = convert_to_submit_format(df, "helpful_votes", "true")
+        df_merge = pd.merge(df_pred, df_true, on="product_idx")
+
+        sum_ndcg = 0
+        for df_dict in df_merge.to_dict("records"):
+            df_eval = pd.merge(
+                pd.DataFrame(df_dict["pred_list"]),
+                pd.DataFrame(df_dict["true_list"]),
+                on="review_idx",
+            )
+            try:
+                ndcg = ndcg_score([df_eval["true_score"]], [df_eval["pred_score"]], k=5)
+            except ValueError:
+                ndcg = 0
+            sum_ndcg += ndcg
+        ndcg = sum_ndcg / len(df_merge)
+        self.log("train_ndcg", ndcg, on_epoch=True, prog_bar=True)
 
     def validation_step(self, batch, _):
         output = self.forward(batch)
         loss = self.criterion(output, batch["label"])
         rmse = self._compute_rmse(output, batch["label"])
-        return {"loss": loss, "rmse": rmse}
+        return {
+            "loss": loss,
+            "rmse": rmse,
+            "y_pred": output,
+            "label": batch["label"],
+            "product_idx": batch["product_idx"],
+            "review_idx": batch["review_idx"],
+        }
 
     def validation_epoch_end(self, outputs):
         avg_loss = torch.stack([x["loss"] for x in outputs]).mean()
         avg_rmse = torch.stack([x["rmse"] for x in outputs]).mean()
+        y_preds = torch.stack([x["y_pred"] for x in outputs])
+        labels = torch.stack([x["label"] for x in outputs])
+        product_idxs = torch.stack([x["product_idx"] for x in outputs])
+        review_idxs = torch.stack([x["review_idx"] for x in outputs])
         self.log("val_loss", avg_loss.detach(), on_epoch=True, prog_bar=True)
         self.log("val_rmse", avg_rmse.detach(), on_epoch=True, prog_bar=True)
-        return {"val_loss": avg_loss, "val_rmse": avg_rmse}
+
+        df = pd.DataFrame(
+            {
+                "review_idx": list(review_idxs.detach().cpu().numpy().reshape(-1)),
+                "product_idx": list(product_idxs.detach().cpu().numpy().reshape(-1)),
+                "helpful_votes": list(labels.detach().cpu().numpy().reshape(-1)),
+            }
+        )
+        df["pred_helpful_votes"] = y_preds.detach().cpu().numpy().reshape(-1)
+        df_pred = convert_to_submit_format(df, "pred_helpful_votes", "pred")
+        df_true = convert_to_submit_format(df, "helpful_votes", "true")
+        df_merge = pd.merge(df_pred, df_true, on="product_idx")
+
+        sum_ndcg = 0
+        for df_dict in df_merge.to_dict("records"):
+            df_eval = pd.merge(
+                pd.DataFrame(df_dict["pred_list"]),
+                pd.DataFrame(df_dict["true_list"]),
+                on="review_idx",
+            )
+            try:
+                ndcg = ndcg_score([df_eval["true_score"]], [df_eval["pred_score"]], k=5)
+            except ValueError:
+                ndcg = 0
+            sum_ndcg += ndcg
+        val_ndcg = sum_ndcg / len(df_merge)
+        self.log("val_ndcg", val_ndcg, on_epoch=True, prog_bar=True)
+        return {"val_loss": avg_loss, "val_rmse": avg_rmse, "val_ndcg": val_ndcg}
 
     def test_step(self, batch, _):
         output = self.forward(batch)
@@ -240,12 +323,8 @@ def training():
     parser.add_argument("--output_csv_dir", type=str, required=True)
     parser.add_argument("--output_mlruns_dir", type=str, required=True)
     parser.add_argument("--experiment_name", type=str, default="predict_helpful_votes")
-    parser.add_argument(
-        "--run_name", type=str, default="cl-tohoku_bert-large-japanese_lr1e-5"
-    )
-    parser.add_argument(
-        "--model_name", type=str, default="cl-tohoku/bert-large-japanese"
-    )
+    parser.add_argument("--run_name", type=str, default=f"{MODEL_PATH}_lr1e-5")
+    parser.add_argument("--model_name", type=str, default=MODEL_PATH)
     parser.add_argument("--batch_size", type=int, default=4)
     parser.add_argument("--learning_rate", type=float, default=1e-5)
     parser.add_argument("--max_epochs", type=int, default=3)
@@ -312,9 +391,7 @@ def predicting(mode: str):
     parser.add_argument("--output_dir", type=str, required=True)
     parser.add_argument("--ckpt_file", type=str)
 
-    parser.add_argument(
-        "--model_name", type=str, default="cl-tohoku/bert-large-japanese"
-    )
+    parser.add_argument("--model_name", type=str, default=MODEL_PATH)
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--gpu", type=int, default=0)
 
@@ -356,18 +433,19 @@ def predicting(mode: str):
     df.to_json(output_file, orient="records", force_ascii=False, lines=True)
 
 
-def evaluating(mode: str):
-    def convert_to_submit_format(df, score_column, mode="pred"):
-        output_list = []
-        for product_idx in sorted(set(df["product_idx"])):
-            df_product = df[df["product_idx"] == product_idx]
-            scores = [
-                {"review_idx": i, mode + "_score": s}
-                for i, s in zip(df_product["review_idx"], df_product[score_column])
-            ]
-            output_list.append({"product_idx": product_idx, mode + "_list": scores})
-        return pd.DataFrame(output_list)
+def convert_to_submit_format(df, score_column, mode="pred"):
+    output_list = []
+    for product_idx in sorted(set(df["product_idx"])):
+        df_product = df[df["product_idx"] == product_idx]
+        scores = [
+            {"review_idx": i, mode + "_score": s}
+            for i, s in zip(df_product["review_idx"], df_product[score_column])
+        ]
+        output_list.append({"product_idx": product_idx, mode + "_list": scores})
+    return pd.DataFrame(output_list)
 
+
+def evaluating(mode: str):
     parser = argparse.ArgumentParser()
     parser.add_argument("--input_file", type=str, required=True)
     parser.add_argument("--output_dir", type=str, required=True)
@@ -434,7 +512,7 @@ def evaluating(mode: str):
 
 
 if __name__ == "__main__":
-    preprocessing(mode="")
+    preprocessing(mode="debug")
     training()
     predicting(mode="val")
     evaluating(mode="val")
