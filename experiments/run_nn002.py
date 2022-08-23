@@ -154,10 +154,10 @@ class ReviewRegressionNet(pl.LightningModule):
     def training_epoch_end(self, outputs):
         avg_loss = torch.stack([x["loss"] for x in outputs]).mean()
         avg_rmse = torch.stack([x["rmse"] for x in outputs]).mean()
-        y_preds = torch.stack([x["y_pred"] for x in outputs])
-        labels = torch.stack([x["label"] for x in outputs])
-        product_idxs = torch.stack([x["product_idx"] for x in outputs])
-        review_idxs = torch.stack([x["review_idx"] for x in outputs])
+        y_preds = torch.cat([x["y_pred"] for x in outputs])
+        labels = torch.cat([x["label"] for x in outputs])
+        product_idxs = torch.cat([x["product_idx"] for x in outputs])
+        review_idxs = torch.cat([x["review_idx"] for x in outputs])
         self.log("train_loss", avg_loss.detach(), on_epoch=True, prog_bar=True)
         self.log("train_rmse", avg_rmse.detach(), on_epoch=True, prog_bar=True)
 
@@ -204,10 +204,10 @@ class ReviewRegressionNet(pl.LightningModule):
     def validation_epoch_end(self, outputs):
         avg_loss = torch.stack([x["loss"] for x in outputs]).mean()
         avg_rmse = torch.stack([x["rmse"] for x in outputs]).mean()
-        y_preds = torch.stack([x["y_pred"] for x in outputs])
-        labels = torch.stack([x["label"] for x in outputs])
-        product_idxs = torch.stack([x["product_idx"] for x in outputs])
-        review_idxs = torch.stack([x["review_idx"] for x in outputs])
+        y_preds = torch.cat([x["y_pred"] for x in outputs])
+        labels = torch.cat([x["label"] for x in outputs])
+        product_idxs = torch.cat([x["product_idx"] for x in outputs])
+        review_idxs = torch.cat([x["review_idx"] for x in outputs])
         self.log("val_loss", avg_loss.detach(), on_epoch=True, prog_bar=True)
         self.log("val_rmse", avg_rmse.detach(), on_epoch=True, prog_bar=True)
 
@@ -363,13 +363,15 @@ def training():
         precision=16,
         gpus=args.gpus,
         max_epochs=args.max_epochs,
+        val_check_interval=10000,
+        accumulate_grad_batches=4,
         callbacks=[
-            pl.callbacks.EarlyStopping(monitor="val_rmse", patience=3, mode="min"),
+            pl.callbacks.EarlyStopping(monitor="val_ndcg", patience=3, mode="min"),
             pl.callbacks.ModelCheckpoint(
                 dirpath=output_model_dir,
                 filename=args.run_name,
                 verbose=True,
-                monitor="val_rmse",
+                monitor="val_ndcg",
                 mode="min",
                 save_top_k=1,
             ),
