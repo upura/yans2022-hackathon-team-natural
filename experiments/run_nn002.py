@@ -169,6 +169,10 @@ class ReviewRegressionNet(pl.LightningModule):
             }
         )
         df["pred_helpful_votes"] = y_preds.detach().cpu().numpy().reshape(-1)
+        df["helpful_votes"] = df["helpful_votes"].apply(lambda x: np.exp(x) - 1)
+        df["pred_helpful_votes"] = df["pred_helpful_votes"].apply(
+            lambda x: np.exp(x) - 1
+        )
         df_pred = convert_to_submit_format(df, "pred_helpful_votes", "pred")
         df_true = convert_to_submit_format(df, "helpful_votes", "true")
         df_merge = pd.merge(df_pred, df_true, on="product_idx")
@@ -219,6 +223,10 @@ class ReviewRegressionNet(pl.LightningModule):
             }
         )
         df["pred_helpful_votes"] = y_preds.detach().cpu().numpy().reshape(-1)
+        df["helpful_votes"] = df["helpful_votes"].apply(lambda x: np.exp(x) - 1)
+        df["pred_helpful_votes"] = df["pred_helpful_votes"].apply(
+            lambda x: np.exp(x) - 1
+        )
         df_pred = convert_to_submit_format(df, "pred_helpful_votes", "pred")
         df_true = convert_to_submit_format(df, "helpful_votes", "true")
         df_merge = pd.merge(df_pred, df_true, on="product_idx")
@@ -340,9 +348,9 @@ def training():
         "--output_mlruns_dir",
         "./data/train/mlruns/",
         "--max_epochs",
-        "5",
+        "3",
         "--learning_rate",
-        "1e-5",
+        "5e-6",
         "--gpus",
         "0",
     ]
@@ -361,7 +369,8 @@ def training():
 
     trainer = pl.Trainer(
         precision=16,
-        gpus=args.gpus,
+        accelerator="gpu",
+        devices=args.gpus,
         max_epochs=args.max_epochs,
         val_check_interval=10000,
         accumulate_grad_batches=4,
@@ -514,7 +523,7 @@ def evaluating(mode: str):
 
 
 if __name__ == "__main__":
-    preprocessing(mode="debug")
+    preprocessing(mode="")
     training()
     predicting(mode="val")
     evaluating(mode="val")
