@@ -16,7 +16,7 @@ from transformers import AutoConfig, AutoModel, AutoTokenizer
 FOLD_ID = 0
 EXPERIMENT_NAME = "predict_helpful_votes"
 MODEL_PATH = "microsoft/infoxlm-large"
-RUN_NAME = f"{MODEL_PATH}_lr5e-6"
+RUN_NAME = f"{MODEL_PATH}_lr5e-6_rmse"
 
 
 class ReviewDataset(Dataset):
@@ -143,7 +143,7 @@ class ReviewRegressionNet(pl.LightningModule):
 
     def training_step(self, batch, _):
         output = self.forward(batch)
-        loss = self.criterion(output, batch["label"])
+        loss = self._compute_rmse(output, batch["label"])
         rmse = self._compute_rmse(output, batch["label"])
         return {
             "loss": loss,
@@ -197,7 +197,7 @@ class ReviewRegressionNet(pl.LightningModule):
 
     def validation_step(self, batch, _):
         output = self.forward(batch)
-        loss = self.criterion(output, batch["label"])
+        loss = self._compute_rmse(output, batch["label"])
         rmse = self._compute_rmse(output, batch["label"])
         return {
             "loss": loss,
