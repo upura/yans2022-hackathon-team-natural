@@ -290,7 +290,7 @@ def preprocessing(mode: str = ""):
     if mode == "debug":
         df = df[:1000]
 
-    group_kfold = GroupKFold(n_splits=5)
+    group_kfold = GroupKFold(n_splits=11)
     for fold_id, (tr_idx, dev_idx) in enumerate(
         group_kfold.split(df, df["helpful_votes"], df["product_idx"])
     ):
@@ -375,13 +375,13 @@ def training():
         val_check_interval=10000,
         accumulate_grad_batches=4,
         callbacks=[
-            pl.callbacks.EarlyStopping(monitor="val_ndcg", patience=3, mode="min"),
+            pl.callbacks.EarlyStopping(monitor="val_ndcg", patience=3, mode="max"),
             pl.callbacks.ModelCheckpoint(
                 dirpath=output_model_dir,
                 filename=args.run_name,
                 verbose=True,
                 monitor="val_ndcg",
-                mode="min",
+                mode="max",
                 save_top_k=1,
             ),
         ],
