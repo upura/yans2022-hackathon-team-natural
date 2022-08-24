@@ -2,7 +2,6 @@ import argparse
 import json
 import os
 
-import numpy as np
 import pandas as pd
 import pytorch_lightning as pl
 import torch
@@ -15,7 +14,7 @@ from transformers import AutoConfig, AutoModel, AutoTokenizer
 
 FOLD_ID = 0
 EXPERIMENT_NAME = "predict_helpful_votes"
-MODEL_PATH = "microsoft/mdeberta-v3-base"
+MODEL_PATH = "microsoft/infoxlm-large"
 RUN_NAME = f"{MODEL_PATH}_lr5e-6"
 
 
@@ -52,9 +51,7 @@ class ReviewDataModule(pl.LightningDataModule):
         self.batch_size = hparams.batch_size
 
     def _make_label(self):
-        self.df.loc[:, "label"] = self.df.loc[:, "helpful_votes"].apply(
-            lambda x: np.log(x + 1)
-        )
+        self.df.loc[:, "label"] = self.df.loc[:, "helpful_votes"]
 
     def setup(self, stage):
         if stage == "fit":
@@ -92,7 +89,7 @@ class ReviewDataModule(pl.LightningDataModule):
 
     def _collate_fn(self, batch):
         output_dict = {}
-        for i in ["input_ids", "token_type_ids", "attention_mask"]:
+        for i in ["input_ids", "attention_mask"]:
             output_dict[i] = nn.utils.rnn.pad_sequence(
                 [torch.LongTensor(b[i]) for b in batch],
                 batch_first=True,
@@ -128,7 +125,6 @@ class ReviewRegressionNet(pl.LightningModule):
         output = self.pretrained_model(
             input_ids=batch["input_ids"],
             attention_mask=batch["attention_mask"],
-            token_type_ids=batch["token_type_ids"],
         )
         sequence_concat = torch.cat(
             [output["hidden_states"][-1 * i][:, 0] for i in range(1, 4 + 1)],
@@ -173,10 +169,6 @@ class ReviewRegressionNet(pl.LightningModule):
             }
         )
         df["pred_helpful_votes"] = y_preds.detach().cpu().numpy().reshape(-1)
-        df["helpful_votes"] = df["helpful_votes"].apply(lambda x: np.exp(x) - 1)
-        df["pred_helpful_votes"] = df["pred_helpful_votes"].apply(
-            lambda x: np.exp(x) - 1
-        )
         df_pred = convert_to_submit_format(df, "pred_helpful_votes", "pred")
         df_true = convert_to_submit_format(df, "helpful_votes", "true")
         df_merge = pd.merge(df_pred, df_true, on="product_idx")
@@ -227,10 +219,6 @@ class ReviewRegressionNet(pl.LightningModule):
             }
         )
         df["pred_helpful_votes"] = y_preds.detach().cpu().numpy().reshape(-1)
-        df["helpful_votes"] = df["helpful_votes"].apply(lambda x: np.exp(x) - 1)
-        df["pred_helpful_votes"] = df["pred_helpful_votes"].apply(
-            lambda x: np.exp(x) - 1
-        )
         df_pred = convert_to_submit_format(df, "pred_helpful_votes", "pred")
         df_true = convert_to_submit_format(df, "helpful_votes", "true")
         df_merge = pd.merge(df_pred, df_true, on="product_idx")
@@ -442,7 +430,7 @@ def predicting(mode: str):
 
     df = pd.read_json(args.input_file, orient="records", lines=True)
     df.loc[:, "pred"] = sum([list(p.numpy().flatten()) for p in pred], [])
-    df.loc[:, "pred_helpful_votes"] = df["pred"].apply(lambda x: np.exp(x) - 1)
+    df.loc[:, "pred_helpful_votes"] = df["pred"]
 
     output_file = args.output_dir + args.input_file.split("/")[-1]
     df.to_json(output_file, orient="records", force_ascii=False, lines=True)
