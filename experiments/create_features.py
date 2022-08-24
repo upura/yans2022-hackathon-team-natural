@@ -62,6 +62,21 @@ if __name__ == "__main__":
     text_cols = ["product_title", "review_headline", "review_body"]
     target_col = ["helpful_votes"]
 
+    train_test["review_date"] = pd.to_datetime(train_test["review_date"])
+    train_test = pd.merge(
+        train_test,
+        train_test.groupby("product_idx")["review_date"].min().reset_index(),
+        on="product_idx",
+        how="left",
+        suffixes=("", "_first"),
+    )
+    train_test["review_days"] = (
+        train_test["review_date"] - train_test["review_date_first"]
+    ).dt.days
+
+    train_test["review_length"] = [len(text) for text in train_test["review_body"]]
+    numerical_cols = ["review_days", "review_length"]
+
     # label_encoding
     ce = CategoricalEncoder(categorical_cols)
     train_test = ce.transform(train_test)
@@ -84,13 +99,26 @@ if __name__ == "__main__":
 
     # text
     train_test["review_headline"] = [
-        [line.split()[0] for line in m.parse(cp).splitlines()]
+        [
+            line.split()[0]
+            for line in m.parse(cp).splitlines()
+            if "名詞" in line.split()[-1]
+        ]
         for cp in train_test["review_headline"]
     ]
     train_test["review_body"] = [
-        [line.split()[0] for line in m.parse(cp).splitlines() if len(line.split())]
+        [
+            line.split()[0]
+            for line in m.parse(cp).splitlines()
+            if len(line.split()) and ("名詞" in line.split()[-1])
+        ]
         for cp in train_test["review_body"]
     ]
+
+    train_test["review_headline"] = [
+        " ".join(text) for text in train_test["review_headline"]
+    ]
+    train_test["review_body"] = [" ".join(text) for text in train_test["review_body"]]
 
     train_test["review_headline"] = [
         " ".join(text) for text in train_test["review_headline"]

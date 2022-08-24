@@ -31,13 +31,13 @@ def run_lgbm(X_train, X_test, y_train, group_df, categorical_cols=[]):
     params = {
         "objective": "regression",
         "metric": "rmse",
-        "num_leaves": 128,
-        "max_depth": 8,
+        "num_leaves": 64,
+        "max_depth": 6,
         "feature_fraction": 0.8,
         "subsample_freq": 1,
         "bagging_fraction": 0.7,
         "min_data_in_leaf": 10,
-        "learning_rate": 0.1,
+        "learning_rate": 0.05,
         "boosting": "gbdt",
         "lambda_l1": 0.4,
         "lambda_l2": 0.4,
@@ -113,9 +113,9 @@ def visualize_importance(models, X_train):
 
 
 if __name__ == "__main__":
-    X_train = joblib.load("../input/pickle/X_train_fe000.pkl")
-    y_train = joblib.load("../input/pickle/y_train_fe000.pkl")
-    X_test = joblib.load("../input/pickle/X_test_fe000.pkl")
+    X_train = joblib.load("../input/pickle/X_train_fe003.pkl")
+    y_train = joblib.load("../input/pickle/y_train_fe003.pkl")
+    X_test = joblib.load("../input/pickle/X_test_fe003.pkl")
     X_test.head()
 
     categorical_cols = [
