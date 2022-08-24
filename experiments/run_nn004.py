@@ -15,8 +15,8 @@ from transformers import AutoConfig, AutoModel, AutoTokenizer
 
 FOLD_ID = 0
 EXPERIMENT_NAME = "predict_helpful_votes"
-MODEL_PATH = "cl-tohoku/bert-large-japanese"
-RUN_NAME = f"{MODEL_PATH}_lr1e-5"
+MODEL_PATH = "microsoft/mdeberta-v3-base"
+RUN_NAME = f"{MODEL_PATH}_lr5e-6"
 
 
 class ReviewDataset(Dataset):
@@ -29,6 +29,7 @@ class ReviewDataset(Dataset):
                 inputs.update({"label": df_dict["label"]})
             inputs.update({"product_idx": df_dict["product_idx"]})
             inputs.update({"review_idx": df_dict["review_idx"]})
+            inputs.update({"customer_idx": df_dict["review_idx"]})
             self.out_inputs.append(inputs)
 
     def __len__(self):
@@ -44,6 +45,9 @@ class ReviewDataModule(pl.LightningDataModule):
         self.save_hyperparameters(hparams)
 
         self.df = pd.read_json(hparams.input_file, orient="records", lines=True)
+        self.df["review_body"] = (
+            self.df["customer_idx"].astype(str) + "[SEP]" + self.df["review_body"]
+        )
         self.tokenizer = AutoTokenizer.from_pretrained(self.hparams.model_name)
         self.batch_size = hparams.batch_size
 
@@ -525,7 +529,7 @@ def evaluating(mode: str):
 if __name__ == "__main__":
     preprocessing(mode="")
     training()
-    predicting(mode="val")
-    evaluating(mode="val")
-    predicting(mode="lb")
-    evaluating(mode="lb")
+    # predicting(mode="val")
+    # evaluating(mode="val")
+    # predicting(mode="lb")
+    # evaluating(mode="lb")
