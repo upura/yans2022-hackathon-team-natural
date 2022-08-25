@@ -37,7 +37,7 @@ def run_lgbm(X_train, X_test, y_train, group_df, categorical_cols=[]):
         "subsample_freq": 1,
         "bagging_fraction": 0.7,
         "min_data_in_leaf": 10,
-        "learning_rate": 0.05,
+        "learning_rate": 0.01,
         "boosting": "gbdt",
         "lambda_l1": 0.4,
         "lambda_l2": 0.4,
@@ -63,8 +63,8 @@ def run_lgbm(X_train, X_test, y_train, group_df, categorical_cols=[]):
             params,
             lgb_train,
             valid_sets=[lgb_train, lgb_eval],
-            num_boost_round=1000,
-            callbacks=[lgb.early_stopping(100), lgb.log_evaluation(100)],
+            num_boost_round=1500,
+            callbacks=[lgb.early_stopping(200), lgb.log_evaluation(200)],
         )
 
         oof_train[valid_index] = model.predict(
