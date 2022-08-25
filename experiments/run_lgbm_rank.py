@@ -30,8 +30,8 @@ def run_lgbm(X_train, X_test, y_train, group_df, categorical_cols=[]):
     params = {
         "objective": "lambdarank",
         "metric": "ndcg",
-        "lambdarank_truncation_level": 1198,
-        "label_gain": np.arange(1198),
+        "lambdarank_truncation_level": 1199,
+        "label_gain": np.arange(1199),
         "ndcg_eval_at": [5],
         "num_leaves": 128,
         "max_depth": 8,
@@ -57,6 +57,7 @@ def run_lgbm(X_train, X_test, y_train, group_df, categorical_cols=[]):
 
         X_tr["target"] = y_tr
         X_val["target"] = y_val
+
         X_tr = X_tr.sort_values("product_idx").reset_index(drop=True)
         q_tr = X_tr.groupby("product_idx").count()["ce_vine"]
         X_val = X_val.sort_values("product_idx").reset_index(drop=True)
@@ -133,7 +134,7 @@ def visualize_importance(models, X_train):
 
 if __name__ == "__main__":
     X_train = joblib.load("../input/pickle/X_train_fe008.pkl")
-    y_train = joblib.load("../input/pickle/y_train_fe008.pkl")
+    y_train = joblib.load("../input/pickle/y_train_fe008r.pkl")
     X_test = joblib.load("../input/pickle/X_test_fe008.pkl")
     y_train = y_train.astype(int)
 
