@@ -73,7 +73,7 @@ def run_lgbm(X_train, X_test, y_train, group_df, categorical_cols=[]):
         joblib.dump(model, f"lgb_{fold_id}.pkl")
         models.append(model)
 
-        y_pred = model.predict(X_test)
+        y_pred = model.predict(X_test, num_iteration=model.best_iteration)
         y_preds.append(y_pred)
 
     return oof_train, y_preds, models
@@ -132,6 +132,7 @@ if __name__ == "__main__":
 
     df = pd.read_json("../input/yans2022/training.jsonl", orient="records", lines=True)
     df["pred_helpful_votes"] = oof_train
+    np.save("oof_train_lgbm", oof_train)
 
     df_pred = convert_to_submit_format(df, "pred_helpful_votes", "pred")
 
@@ -156,6 +157,7 @@ if __name__ == "__main__":
         "../input/yans2022/leader_board.jsonl", orient="records", lines=True
     )
     df["pred_helpful_votes"] = np.average(y_preds, axis=0)
+    np.save("y_pred_lgbm", np.average(y_preds, axis=0))
     df_pred = convert_to_submit_format(df, "pred_helpful_votes", "pred")
     output_pred_file = "submission_run000.jsonl"
     df_pred.to_json(output_pred_file, orient="records", force_ascii=False, lines=True)
