@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from sklearn.metrics import ndcg_score
 from sklearn.model_selection import GroupKFold
 
 
@@ -22,7 +23,7 @@ def convert_to_submit_format(df, score_column, mode="pred"):
 def run_lgbm(X_train, X_test, y_train, group_df, categorical_cols=[]):
     y_preds = []
     models = []
-    oof_train = np.zeros((len(X_train),))
+    oof_train = []
     cv = GroupKFold(n_splits=5)
     X_test = X_test.drop("product_idx", axis=1)
     params = {
@@ -37,7 +38,7 @@ def run_lgbm(X_train, X_test, y_train, group_df, categorical_cols=[]):
         "subsample_freq": 1,
         "bagging_fraction": 0.7,
         "min_data_in_leaf": 10,
-        "learning_rate": 0.05,
+        "learning_rate": 0.01,
         "boosting": "gbdt",
         "lambda_l1": 0.4,
         "lambda_l2": 0.4,
@@ -62,15 +63,16 @@ def run_lgbm(X_train, X_test, y_train, group_df, categorical_cols=[]):
         q_val = X_val.groupby("product_idx").count()["ce_vine"]
         y_tr = X_tr["target"]
         y_val = X_val["target"]
-        X_tr = X_tr.drop(["target", "product_idx"], axis=1)
-        X_val = X_val.drop(["target", "product_idx"], axis=1)
 
         lgb_train = lgb.Dataset(
-            X_tr, y_tr, categorical_feature=categorical_cols, group=q_tr
+            X_tr.drop(["target", "product_idx"], axis=1),
+            y_tr,
+            categorical_feature=categorical_cols,
+            group=q_tr,
         )
 
         lgb_eval = lgb.Dataset(
-            X_val,
+            X_val.drop(["target", "product_idx"], axis=1),
             y_val,
             reference=lgb_train,
             categorical_feature=categorical_cols,
@@ -81,13 +83,17 @@ def run_lgbm(X_train, X_test, y_train, group_df, categorical_cols=[]):
             params,
             lgb_train,
             valid_sets=[lgb_train, lgb_eval],
-            num_boost_round=1000,
-            callbacks=[lgb.early_stopping(100), lgb.log_evaluation(100)],
+            num_boost_round=10000,
+            callbacks=[lgb.early_stopping(200), lgb.log_evaluation(200)],
         )
 
-        oof_train[valid_index] = model.predict(
-            X_val, num_iteration=model.best_iteration
+        X_val["pred_helpful_votes"] = model.predict(
+            X_val.drop(["target", "product_idx"], axis=1),
+            num_iteration=model.best_iteration,
         )
+        oof_df = X_val[["product_idx", "target", "pred_helpful_votes"]]
+        oof_train.append(oof_df)
+
         joblib.dump(model, f"lgb_{fold_id}.pkl")
         models.append(model)
 
@@ -148,10 +154,32 @@ if __name__ == "__main__":
     )
     visualize_importance(models, X_train.drop("product_idx", axis=1))
 
+    df = pd.concat(oof_train)
+    df["review_idx"] = np.arange(len(df))
+    df.to_csv("oof_df_lgbm.csv", index=False)
+    df_pred = convert_to_submit_format(df, "pred_helpful_votes", "pred")
+    df_true = convert_to_submit_format(df, "target", "true")
+    df_merge = pd.merge(df_pred, df_true, on="product_idx")
+
+    sum_ndcg = 0
+    for df_dict in df_merge.to_dict("records"):
+        df_eval = pd.merge(
+            pd.DataFrame(df_dict["pred_list"]),
+            pd.DataFrame(df_dict["true_list"]),
+            on="review_idx",
+        )
+        try:
+            ndcg = ndcg_score([df_eval["true_score"]], [df_eval["pred_score"]], k=5)
+        except ValueError:
+            ndcg = 0
+        sum_ndcg += ndcg
+    print(sum_ndcg / len(df_merge))
+
     df = pd.read_json(
         "../input/yans2022/leader_board.jsonl", orient="records", lines=True
     )
     df["pred_helpful_votes"] = np.average(y_preds, axis=0)
+    np.save("y_pred_lgbm", np.average(y_preds, axis=0))
     df_pred = convert_to_submit_format(df, "pred_helpful_votes", "pred")
     output_pred_file = "submission.jsonl"
     df_pred.to_json(output_pred_file, orient="records", force_ascii=False, lines=True)
