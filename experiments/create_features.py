@@ -11,6 +11,11 @@ import numpy as np
 import pandas as pd
 from kaggle_utils.features import count_encoding, count_encoding_interact
 from kaggle_utils.features.category_encoding import CategoricalEncoder
+from kaggle_utils.features.groupby import (
+    DiffGroupbyTransformer,
+    GroupbyTransformer,
+    RatioGroupbyTransformer,
+)
 from kaggle_utils.features.text import BasicTextFeatureTransformer, TextVectorizer
 from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -74,8 +79,9 @@ if __name__ == "__main__":
         train_test["review_date"] - train_test["review_date_first"]
     ).dt.days
 
-    train_test["review_length"] = [len(text) for text in train_test["review_body"]]
-    numerical_cols = ["review_days", "review_length"]
+    train_test["review_year"] = train_test["review_date"].dt.year
+    train_test["review_month"] = train_test["review_date"].dt.month
+    numerical_cols = ["review_days", "review_year", "review_month"]
 
     # label_encoding
     ce = CategoricalEncoder(categorical_cols)
@@ -154,12 +160,36 @@ if __name__ == "__main__":
         "../input/feather/btft.ftr"
     )
 
+    # aggregation
+    groupby_dict = [
+        {
+            "key": ["customer_idx"],
+            "var": [
+                "review_days",
+            ],
+            "agg": ["mean", "sum", "median", "min", "max", "var", "std"],
+        }
+    ]
+
+    original_cols = train_test.columns
+    groupby = GroupbyTransformer(param_dict=groupby_dict)
+    train_test = groupby.transform(train_test)
+    diff = DiffGroupbyTransformer(param_dict=groupby_dict)
+    train_test = diff.transform(train_test)
+    ratio = RatioGroupbyTransformer(param_dict=groupby_dict)
+    train_test = ratio.transform(train_test)
+    train_test[list(set(train_test.columns) - set(original_cols))].to_feather(
+        "../input/feather/aggregation.ftr"
+    )
+
     features = FeatureStore(
         feature_names=[
             "../input/feather/train_test.ftr",
             "../input/feather/count_encoding.ftr",
             "../input/feather/count_encoding_interact.ftr",
             "../input/feather/btft.ftr",
+            # "../input/feather/texts.ftr",
+            "../input/feather/aggregation.ftr",
         ],
         target_col=target_col[0],
     )
@@ -172,7 +202,7 @@ if __name__ == "__main__":
     print(X_train.shape)
     print(X_train.columns)
 
-    fe_name = "fe000"
+    fe_name = "fe004"
     Data.dump(X_train, f"../input/pickle/X_train_{fe_name}.pkl")
     Data.dump(y_train, f"../input/pickle/y_train_{fe_name}.pkl")
     Data.dump(X_test, f"../input/pickle/X_test_{fe_name}.pkl")
