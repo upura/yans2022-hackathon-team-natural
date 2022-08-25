@@ -7,7 +7,6 @@ from typing import Any
 
 import joblib
 import MeCab
-import numpy as np
 import pandas as pd
 from kaggle_utils.features import count_encoding, count_encoding_interact
 from kaggle_utils.features.category_encoding import CategoricalEncoder
@@ -105,19 +104,11 @@ if __name__ == "__main__":
 
     # text
     train_test["review_headline"] = [
-        [
-            line.split()[0]
-            for line in m.parse(cp).splitlines()
-            if "名詞" in line.split()[-1]
-        ]
+        [line.split()[0] for line in m.parse(cp).splitlines()]
         for cp in train_test["review_headline"]
     ]
     train_test["review_body"] = [
-        [
-            line.split()[0]
-            for line in m.parse(cp).splitlines()
-            if len(line.split()) and ("名詞" in line.split()[-1])
-        ]
+        [line.split()[0] for line in m.parse(cp).splitlines() if len(line.split())]
         for cp in train_test["review_body"]
     ]
 
@@ -143,14 +134,14 @@ if __name__ == "__main__":
     ttv = TextVectorizer(
         text_columns=["review_headline"],
         vectorizer=TfidfVectorizer(),
-        transformer=TruncatedSVD(n_components=128, random_state=777),
+        transformer=TruncatedSVD(n_components=32, random_state=777),
         name="review_headline_tfidf",
     )
     train_test = ttv.transform(train_test)
     stv = TextVectorizer(
         text_columns=["review_body"],
         vectorizer=TfidfVectorizer(),
-        transformer=TruncatedSVD(n_components=128, random_state=777),
+        transformer=TruncatedSVD(n_components=32, random_state=777),
         name="review_body_tfidf",
     )
     train_test = stv.transform(train_test)
@@ -164,11 +155,19 @@ if __name__ == "__main__":
     groupby_dict = [
         {
             "key": ["customer_idx"],
-            "var": [
-                "review_days",
-            ],
+            "var": ["review_days", "ce_product_idx"],
             "agg": ["mean", "sum", "median", "min", "max", "var", "std"],
-        }
+        },
+        {
+            "key": ["product_category"],
+            "var": ["review_days", "ce_product_idx"],
+            "agg": ["mean", "sum", "median", "min", "max", "var", "std"],
+        },
+        {
+            "key": ["customer_idx", "product_category"],
+            "var": ["review_days", "ce_product_idx"],
+            "agg": ["mean", "sum", "median", "min", "max", "var", "std"],
+        },
     ]
 
     original_cols = train_test.columns
@@ -179,7 +178,7 @@ if __name__ == "__main__":
     ratio = RatioGroupbyTransformer(param_dict=groupby_dict)
     train_test = ratio.transform(train_test)
     train_test[list(set(train_test.columns) - set(original_cols))].to_feather(
-        "../input/feather/aggregation.ftr"
+        "../input/feather/aggregation2.ftr"
     )
 
     features = FeatureStore(
@@ -187,9 +186,9 @@ if __name__ == "__main__":
             "../input/feather/train_test.ftr",
             "../input/feather/count_encoding.ftr",
             "../input/feather/count_encoding_interact.ftr",
-            "../input/feather/btft.ftr",
+            "../input/feather/btftall.ftr",
             # "../input/feather/texts.ftr",
-            "../input/feather/aggregation.ftr",
+            "../input/feather/aggregation2.ftr",
         ],
         target_col=target_col[0],
     )
@@ -197,12 +196,12 @@ if __name__ == "__main__":
     X_train = features.X_train
     y_train = features.y_train
     X_test = features.X_test
-    y_train = y_train.map(lambda x: np.log(x + 1))
+    # y_train = y_train.map(lambda x: np.log(x + 1))
 
     print(X_train.shape)
     print(X_train.columns)
 
-    fe_name = "fe004"
+    fe_name = "fe008"
     Data.dump(X_train, f"../input/pickle/X_train_{fe_name}.pkl")
     Data.dump(y_train, f"../input/pickle/y_train_{fe_name}.pkl")
     Data.dump(X_test, f"../input/pickle/X_test_{fe_name}.pkl")
