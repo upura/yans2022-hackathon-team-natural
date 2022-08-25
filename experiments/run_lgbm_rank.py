@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from sklearn.metrics import ndcg_score
 from sklearn.model_selection import GroupKFold
 
 
@@ -25,13 +24,12 @@ def run_lgbm(X_train, X_test, y_train, group_df, categorical_cols=[]):
     models = []
     oof_train = np.zeros((len(X_train),))
     cv = GroupKFold(n_splits=5)
-    X_test = X_test.sort_values("product_idx").reset_index(drop=True)
     X_test = X_test.drop("product_idx", axis=1)
     params = {
         "objective": "lambdarank",
         "metric": "ndcg",
         "lambdarank_truncation_level": 1199,
-        "label_gain": np.arange(1199),
+        "label_gain": np.arange(2590),
         "ndcg_eval_at": [5],
         "num_leaves": 128,
         "max_depth": 8,
@@ -93,7 +91,7 @@ def run_lgbm(X_train, X_test, y_train, group_df, categorical_cols=[]):
         joblib.dump(model, f"lgb_{fold_id}.pkl")
         models.append(model)
 
-        y_pred = model.predict(X_test)
+        y_pred = model.predict(X_test, num_iteration=model.best_iteration)
         y_preds.append(y_pred)
 
     return oof_train, y_preds, models
@@ -149,28 +147,6 @@ if __name__ == "__main__":
         X_train, X_test, y_train, X_train["product_idx"], categorical_cols
     )
     visualize_importance(models, X_train.drop("product_idx", axis=1))
-
-    df = pd.read_json("../input/yans2022/training.jsonl", orient="records", lines=True)
-    df["pred_helpful_votes"] = oof_train
-
-    df_pred = convert_to_submit_format(df, "pred_helpful_votes", "pred")
-
-    df_true = convert_to_submit_format(df, "helpful_votes", "true")
-    df_merge = pd.merge(df_pred, df_true, on="product_idx")
-
-    sum_ndcg = 0
-    for df_dict in df_merge.to_dict("records"):
-        df_eval = pd.merge(
-            pd.DataFrame(df_dict["pred_list"]),
-            pd.DataFrame(df_dict["true_list"]),
-            on="review_idx",
-        )
-        try:
-            ndcg = ndcg_score([df_eval["true_score"]], [df_eval["pred_score"]], k=5)
-        except ValueError:
-            ndcg = 0
-        sum_ndcg += ndcg
-    print(sum_ndcg / len(df_merge))
 
     df = pd.read_json(
         "../input/yans2022/leader_board.jsonl", orient="records", lines=True
