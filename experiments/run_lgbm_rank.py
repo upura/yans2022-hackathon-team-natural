@@ -30,16 +30,16 @@ def run_lgbm(X_train, X_test, y_train, group_df, categorical_cols=[]):
     params = {
         "objective": "lambdarank",
         "metric": "ndcg",
-        "lambdarank_truncation_level": 30,
-        "label_gain": np.arange(len(X_train)),
+        "lambdarank_truncation_level": 1198,
+        "label_gain": np.arange(1198),
         "ndcg_eval_at": [5],
-        "num_leaves": 32,
-        "max_depth": 4,
+        "num_leaves": 128,
+        "max_depth": 8,
         "feature_fraction": 0.8,
         "subsample_freq": 1,
         "bagging_fraction": 0.7,
         "min_data_in_leaf": 10,
-        "learning_rate": 0.1,
+        "learning_rate": 0.05,
         "boosting": "gbdt",
         "lambda_l1": 0.4,
         "lambda_l2": 0.4,
@@ -55,12 +55,16 @@ def run_lgbm(X_train, X_test, y_train, group_df, categorical_cols=[]):
         y_tr = y_train[train_index]
         y_val = y_train[valid_index]
 
+        X_tr["target"] = y_tr
+        X_val["target"] = y_val
         X_tr = X_tr.sort_values("product_idx").reset_index(drop=True)
         q_tr = X_tr.groupby("product_idx").count()["ce_vine"]
         X_val = X_val.sort_values("product_idx").reset_index(drop=True)
         q_val = X_val.groupby("product_idx").count()["ce_vine"]
-        X_tr = X_tr.drop("product_idx", axis=1)
-        X_val = X_val.drop("product_idx", axis=1)
+        y_tr = X_tr["target"]
+        y_val = X_val["target"]
+        X_tr = X_tr.drop(["target", "product_idx"], axis=1)
+        X_val = X_val.drop(["target", "product_idx"], axis=1)
 
         lgb_train = lgb.Dataset(
             X_tr, y_tr, categorical_feature=categorical_cols, group=q_tr
@@ -128,9 +132,9 @@ def visualize_importance(models, X_train):
 
 
 if __name__ == "__main__":
-    X_train = joblib.load("../input/pickle/X_train_fe000.pkl")
-    y_train = joblib.load("../input/pickle/y_train_fe000.pkl")
-    X_test = joblib.load("../input/pickle/X_test_fe000.pkl")
+    X_train = joblib.load("../input/pickle/X_train_fe008.pkl")
+    y_train = joblib.load("../input/pickle/y_train_fe008.pkl")
+    X_test = joblib.load("../input/pickle/X_test_fe008.pkl")
     y_train = y_train.astype(int)
 
     categorical_cols = [
