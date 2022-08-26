@@ -147,6 +147,7 @@ if __name__ == "__main__":
     X_test = joblib.load(f"../input/pickle/X_test_fe{run_name}.pkl")
     X_final = joblib.load(f"../input/pickle/X_final_fe{run_name}.pkl")
     y_train = y_train.astype(int)
+    print(X_train.shape, X_test.shape, X_final.shape)
 
     categorical_cols = [
         "product_category",

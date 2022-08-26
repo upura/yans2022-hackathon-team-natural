@@ -160,16 +160,16 @@ if __name__ == "__main__":
             "var": ["review_days", "ce_product_idx"],
             "agg": ["mean", "sum", "median", "min", "max", "var", "std"],
         },
-        # {
-        #     "key": ["product_idx"],
-        #     "var": ["review_days", "ce_product_idx"],
-        #     "agg": ["mean", "sum", "median", "min", "max", "var", "std"],
-        # },
-        # {
-        #     "key": ["customer_idx", "product_idx"],
-        #     "var": ["review_days", "ce_product_idx"],
-        #     "agg": ["mean", "sum", "median", "min", "max", "var", "std"],
-        # },
+        {
+            "key": ["product_idx"],
+            "var": ["review_days"],
+            "agg": ["mean", "sum", "median", "min", "max", "var", "std"],
+        },
+        {
+            "key": ["customer_idx", "product_idx"],
+            "var": ["review_days"],
+            "agg": ["mean", "sum", "median", "min", "max", "var", "std"],
+        },
         {
             "key": ["customer_idx", "product_category"],
             "var": ["review_days", "ce_product_idx"],
