@@ -31,3 +31,6 @@ cd path_to/experiments
 !python create_features.py
 !python run_lgbm_rank.py
 ```
+
+- create_features.py: 特徴量を生成
+- run_lgbm_rank.py: LightGBM で学習・予測
