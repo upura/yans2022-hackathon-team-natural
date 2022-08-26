@@ -20,12 +20,14 @@ def convert_to_submit_format(df, score_column, mode="pred"):
     return pd.DataFrame(output_list)
 
 
-def run_lgbm(X_train, X_test, y_train, group_df, categorical_cols=[]):
+def run_lgbm(X_train, X_test, X_final, y_train, group_df, categorical_cols=[]):
     y_preds = []
+    y_finals = []
     models = []
     oof_train = []
     cv = GroupKFold(n_splits=5)
     X_test = X_test.drop("product_idx", axis=1)
+    X_final = X_final.drop("product_idx", axis=1)
     params = {
         "objective": "lambdarank",
         "metric": "ndcg",
@@ -99,8 +101,10 @@ def run_lgbm(X_train, X_test, y_train, group_df, categorical_cols=[]):
 
         y_pred = model.predict(X_test, num_iteration=model.best_iteration)
         y_preds.append(y_pred)
+        y_final = model.predict(X_final, num_iteration=model.best_iteration)
+        y_finals.append(y_final)
 
-    return oof_train, y_preds, models
+    return oof_train, y_preds, y_finals, models
 
 
 def visualize_importance(models, X_train):
@@ -137,26 +141,27 @@ def visualize_importance(models, X_train):
 
 
 if __name__ == "__main__":
-    X_train = joblib.load("../input/pickle/X_train_fe008.pkl")
-    y_train = joblib.load("../input/pickle/y_train_fe008r.pkl")
-    X_test = joblib.load("../input/pickle/X_test_fe008.pkl")
+    run_name = "009"
+    X_train = joblib.load(f"../input/pickle/X_train_fe{run_name}.pkl")
+    y_train = joblib.load(f"../input/pickle/y_train_fe{run_name}.pkl")
+    X_test = joblib.load(f"../input/pickle/X_test_fe{run_name}.pkl")
+    X_final = joblib.load(f"../input/pickle/X_final_fe{run_name}.pkl")
     y_train = y_train.astype(int)
 
     categorical_cols = [
         "product_category",
-        "star_rating",
         "vine",
         "verified_purchase",
         "customer_idx",
     ]
-    oof_train, y_preds, models = run_lgbm(
-        X_train, X_test, y_train, X_train["product_idx"], categorical_cols
+    oof_train, y_preds, y_finals, models = run_lgbm(
+        X_train, X_test, X_final, y_train, X_train["product_idx"], categorical_cols
     )
     visualize_importance(models, X_train.drop("product_idx", axis=1))
 
     df = pd.concat(oof_train)
     df["review_idx"] = np.arange(len(df))
-    df.to_csv("oof_df_lgbm.csv", index=False)
+    df.to_csv(f"oof_df{run_name}.csv", index=False)
     df_pred = convert_to_submit_format(df, "pred_helpful_votes", "pred")
     df_true = convert_to_submit_format(df, "target", "true")
     df_merge = pd.merge(df_pred, df_true, on="product_idx")
@@ -179,7 +184,16 @@ if __name__ == "__main__":
         "../input/yans2022/leader_board.jsonl", orient="records", lines=True
     )
     df["pred_helpful_votes"] = np.average(y_preds, axis=0)
-    np.save("y_pred_lgbm", np.average(y_preds, axis=0))
+    np.save(f"y_pred{run_name}", np.average(y_preds, axis=0))
     df_pred = convert_to_submit_format(df, "pred_helpful_votes", "pred")
-    output_pred_file = "submission.jsonl"
+    output_pred_file = f"submission_lb{run_name}.jsonl"
+    df_pred.to_json(output_pred_file, orient="records", force_ascii=False, lines=True)
+
+    df = pd.read_json(
+        "../input/yans2022/final_result.jsonl", orient="records", lines=True
+    )
+    df["pred_helpful_votes"] = np.average(y_finals, axis=0)
+    np.save(f"y_final{run_name}", np.average(y_finals, axis=0))
+    df_pred = convert_to_submit_format(df, "pred_helpful_votes", "pred")
+    output_pred_file = f"submit_final_result{run_name}.jsonl"
     df_pred.to_json(output_pred_file, orient="records", force_ascii=False, lines=True)

@@ -52,12 +52,14 @@ if __name__ == "__main__":
     test = pd.read_json(
         "../input/yans2022/leader_board.jsonl", orient="records", lines=True
     )
-    train_test = pd.concat([train, test], axis=0).reset_index(drop=True)
-    print(train.shape, test.shape)
+    final = pd.read_json(
+        "../input/yans2022/final_result.jsonl", orient="records", lines=True
+    )
+    train_test = pd.concat([train, test, final], axis=0).reset_index(drop=True)
+    print(train.shape, test.shape, final.shape)
 
     categorical_cols = [
         "product_category",
-        "star_rating",
         "vine",
         "verified_purchase",
         "product_idx",
@@ -80,12 +82,12 @@ if __name__ == "__main__":
 
     train_test["review_year"] = train_test["review_date"].dt.year
     train_test["review_month"] = train_test["review_date"].dt.month
-    numerical_cols = ["review_days", "review_year", "review_month"]
+    numerical_cols = ["star_rating", "review_days", "review_year", "review_month"]
 
     # label_encoding
     ce = CategoricalEncoder(categorical_cols)
     train_test = ce.transform(train_test)
-    train_test[categorical_cols + target_col].to_feather(
+    train_test[categorical_cols + numerical_cols + target_col].to_feather(
         "../input/feather/train_test.ftr"
     )
 
@@ -117,11 +119,6 @@ if __name__ == "__main__":
     ]
     train_test["review_body"] = [" ".join(text) for text in train_test["review_body"]]
 
-    train_test["review_headline"] = [
-        " ".join(text) for text in train_test["review_headline"]
-    ]
-    train_test["review_body"] = [" ".join(text) for text in train_test["review_body"]]
-
     before_cols = train_test.columns
     btft = BasicTextFeatureTransformer(text_columns=["review_headline", "review_body"])
     train_test = btft.transform(train_test)
@@ -134,21 +131,21 @@ if __name__ == "__main__":
     ttv = TextVectorizer(
         text_columns=["review_headline"],
         vectorizer=TfidfVectorizer(),
-        transformer=TruncatedSVD(n_components=32, random_state=777),
+        transformer=TruncatedSVD(n_components=128, random_state=777),
         name="review_headline_tfidf",
     )
     train_test = ttv.transform(train_test)
     stv = TextVectorizer(
         text_columns=["review_body"],
         vectorizer=TfidfVectorizer(),
-        transformer=TruncatedSVD(n_components=32, random_state=777),
+        transformer=TruncatedSVD(n_components=128, random_state=777),
         name="review_body_tfidf",
     )
     train_test = stv.transform(train_test)
 
     after_cols = train_test.columns
     train_test[list(set(after_cols) - set(before_cols))].to_feather(
-        "../input/feather/btft.ftr"
+        "../input/feather/bow_tfidf.ftr"
     )
 
     # aggregation
@@ -163,6 +160,16 @@ if __name__ == "__main__":
             "var": ["review_days", "ce_product_idx"],
             "agg": ["mean", "sum", "median", "min", "max", "var", "std"],
         },
+        # {
+        #     "key": ["product_idx"],
+        #     "var": ["review_days", "ce_product_idx"],
+        #     "agg": ["mean", "sum", "median", "min", "max", "var", "std"],
+        # },
+        # {
+        #     "key": ["customer_idx", "product_idx"],
+        #     "var": ["review_days", "ce_product_idx"],
+        #     "agg": ["mean", "sum", "median", "min", "max", "var", "std"],
+        # },
         {
             "key": ["customer_idx", "product_category"],
             "var": ["review_days", "ce_product_idx"],
@@ -178,7 +185,7 @@ if __name__ == "__main__":
     ratio = RatioGroupbyTransformer(param_dict=groupby_dict)
     train_test = ratio.transform(train_test)
     train_test[list(set(train_test.columns) - set(original_cols))].to_feather(
-        "../input/feather/aggregation2.ftr"
+        "../input/feather/aggregation.ftr"
     )
 
     features = FeatureStore(
@@ -186,22 +193,21 @@ if __name__ == "__main__":
             "../input/feather/train_test.ftr",
             "../input/feather/count_encoding.ftr",
             "../input/feather/count_encoding_interact.ftr",
-            "../input/feather/btftall.ftr",
-            # "../input/feather/texts.ftr",
-            "../input/feather/aggregation2.ftr",
+            "../input/feather/bow_tfidf.ftr",
+            "../input/feather/aggregation.ftr",
         ],
         target_col=target_col[0],
     )
 
     X_train = features.X_train
     y_train = features.y_train
-    X_test = features.X_test
-    # y_train = y_train.map(lambda x: np.log(x + 1))
-
-    print(X_train.shape)
+    X_test = features.X_test.iloc[:14597, :].reset_index(drop=True)
+    X_final = features.X_test.iloc[14597:, :].reset_index(drop=True)
+    print(X_train.shape, X_test.shape, X_final.shape)
     print(X_train.columns)
 
-    fe_name = "fe008"
+    fe_name = "fe009"
     Data.dump(X_train, f"../input/pickle/X_train_{fe_name}.pkl")
     Data.dump(y_train, f"../input/pickle/y_train_{fe_name}.pkl")
     Data.dump(X_test, f"../input/pickle/X_test_{fe_name}.pkl")
+    Data.dump(X_final, f"../input/pickle/X_final_{fe_name}.pkl")
