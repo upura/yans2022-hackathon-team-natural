@@ -39,7 +39,7 @@ def run_lgbm(X_train, X_test, X_final, y_train, group_df, categorical_cols=[]):
         "feature_fraction": 0.8,
         "subsample_freq": 1,
         "bagging_fraction": 0.7,
-        "min_data_in_leaf": 10,
+        "min_data_in_leaf": 50,
         "learning_rate": 0.01,
         "boosting": "gbdt",
         "lambda_l1": 0.4,
@@ -141,7 +141,7 @@ def visualize_importance(models, X_train):
 
 
 if __name__ == "__main__":
-    run_name = "014"
+    run_name = "018"
     X_train = joblib.load(f"../input/pickle/X_train_fe{run_name}.pkl")
     y_train = joblib.load(f"../input/pickle/y_train_fe{run_name}.pkl")
     X_test = joblib.load(f"../input/pickle/X_test_fe{run_name}.pkl")
