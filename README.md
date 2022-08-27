@@ -21,7 +21,7 @@ cp /etc/mecabrc /usr/local/etc/
 !pip install -q transformers
 
 # LightGBM
-!pip install lightgbm==3.3.2
+!pip install -q lightgbm==3.3.2
 ```
 
 ## Run
