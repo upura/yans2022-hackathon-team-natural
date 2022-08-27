@@ -36,3 +36,11 @@ cd path_to/experiments
 
 - create_features014.py: 特徴量を生成
 - run_lgbm_rank.py: LightGBM で学習・予測
+- additional\_pretraining.py
+    - [WRIME: 主観と客観の感情分析データセット](https://github.com/ids-cv/wrime)のwrime-ver2.tsvを用いて学習するコード
+    - Ref. [Pytorch Lightningを使用したBERT文書分類モデルの実装](https://qiita.com/tchih11/items/7e97db29b95cf08fdda0)
+    - Early Stoppingを行った。（リーダーボードで利用したものはEpoch=2)
+    - 損失関数はMSE Loss
+- create\_bert\_feature.py
+    - additional\_pretraining.pyで作成したBERTモデルをロードして、baselineのpredictと同様にしてスコアを算出
+    - baselineのコードのpredict.ipynbをもとに作成

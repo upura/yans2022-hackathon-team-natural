@@ -1,4 +1,5 @@
 import os
+
 import pandas as pd
 import pytorch_lightning as pl
 import torch
@@ -11,6 +12,7 @@ from transformers import AutoModel, AutoTokenizer
 """
 Ref. Pytorch Lightningを使用したBERT文書分類モデルの実装 ( https://qiita.com/tchih11/items/7e97db29b95cf08fdda0 )
 """
+
 
 class CreateDataset(Dataset):
     """
@@ -38,14 +40,14 @@ class CreateDataset(Dataset):
             padding="max_length",
             truncation=True,
             return_attention_mask=True,
-            return_tensors='pt',
+            return_tensors="pt",
         )
 
         return dict(
             text=text,
             input_ids=encoding["input_ids"].flatten(),
             attention_mask=encoding["attention_mask"].flatten(),
-            labels=torch.tensor(labels)
+            labels=torch.tensor(labels),
         )
 
 
@@ -53,6 +55,7 @@ class CreateDataModule(pl.LightningDataModule):
     """
     DataFrameからモデリング時に使用するDataModuleを作成
     """
+
     def __init__(self, train_df, valid_df, test_df, batch_size=16, max_token_len=512):
         super().__init__()
         self.train_df = train_df
@@ -60,21 +63,36 @@ class CreateDataModule(pl.LightningDataModule):
         self.test_df = test_df
         self.batch_size = batch_size
         self.max_token_len = max_token_len
-        self.tokenizer = AutoTokenizer.from_pretrained('cl-tohoku/bert-base-japanese')
+        self.tokenizer = AutoTokenizer.from_pretrained("cl-tohoku/bert-base-japanese")
 
     def setup(self, stage=None):
-        self.train_dataset = CreateDataset(self.train_df, self.tokenizer, self.max_token_len)
-        self.vaild_dataset = CreateDataset(self.valid_df, self.tokenizer, self.max_token_len)
-        self.test_dataset = CreateDataset(self.test_df, self.tokenizer, self.max_token_len)
+        self.train_dataset = CreateDataset(
+            self.train_df, self.tokenizer, self.max_token_len
+        )
+        self.vaild_dataset = CreateDataset(
+            self.valid_df, self.tokenizer, self.max_token_len
+        )
+        self.test_dataset = CreateDataset(
+            self.test_df, self.tokenizer, self.max_token_len
+        )
 
     def train_dataloader(self):
-        return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=os.cpu_count())
+        return DataLoader(
+            self.train_dataset,
+            batch_size=self.batch_size,
+            shuffle=True,
+            num_workers=os.cpu_count(),
+        )
 
     def val_dataloader(self):
-        return DataLoader(self.vaild_dataset, batch_size=self.batch_size, num_workers=os.cpu_count())
+        return DataLoader(
+            self.vaild_dataset, batch_size=self.batch_size, num_workers=os.cpu_count()
+        )
 
     def test_dataloader(self):
-        return DataLoader(self.test_dataset, batch_size=self.batch_size, num_workers=os.cpu_count())
+        return DataLoader(
+            self.test_dataset, batch_size=self.batch_size, num_workers=os.cpu_count()
+        )
 
 
 class TextClassifier(pl.LightningModule):
@@ -82,7 +100,7 @@ class TextClassifier(pl.LightningModule):
         super().__init__()
 
         # モデルの構造
-        self.bert = AutoModel.from_pretrained('cl-tohoku/bert-base-japanese')
+        self.bert = AutoModel.from_pretrained("cl-tohoku/bert-base-japanese")
         self.classifier = nn.Linear(self.bert.config.hidden_size, 1)
         self.n_epochs = n_epochs
         self.criterion = nn.MSELoss()
@@ -104,35 +122,35 @@ class TextClassifier(pl.LightningModule):
 
     # trainのミニバッチに対して行う処理
     def training_step(self, batch, batch_idx):
-        loss, preds = self.forward(input_ids=batch["input_ids"],
-                                    attention_mask=batch["attention_mask"],
-                                    labels=batch["labels"])
-        return {'loss': loss,
-                'batch_preds': preds,
-                'batch_labels': batch["labels"]}
+        loss, preds = self.forward(
+            input_ids=batch["input_ids"],
+            attention_mask=batch["attention_mask"],
+            labels=batch["labels"],
+        )
+        return {"loss": loss, "batch_preds": preds, "batch_labels": batch["labels"]}
 
     # validation、testでもtrain_stepと同じ処理を行う
     def validation_step(self, batch, batch_idx):
-        loss, preds = self.forward(input_ids=batch["input_ids"],
-                                    attention_mask=batch["attention_mask"],
-                                    labels=batch["labels"])
-        return {'loss': loss,
-                'batch_preds': preds,
-                'batch_labels': batch["labels"]}
+        loss, preds = self.forward(
+            input_ids=batch["input_ids"],
+            attention_mask=batch["attention_mask"],
+            labels=batch["labels"],
+        )
+        return {"loss": loss, "batch_preds": preds, "batch_labels": batch["labels"]}
 
     def test_step(self, batch, batch_idx):
-        loss, preds = self.forward(input_ids=batch["input_ids"],
-                                    attention_mask=batch["attention_mask"],
-                                    labels=batch["labels"])
-        return {'loss': loss,
-                'batch_preds': preds,
-                'batch_labels': batch["labels"]}
+        loss, preds = self.forward(
+            input_ids=batch["input_ids"],
+            attention_mask=batch["attention_mask"],
+            labels=batch["labels"],
+        )
+        return {"loss": loss, "batch_preds": preds, "batch_labels": batch["labels"]}
 
     # epoch終了時にvalidationのlossとaccuracyを記録
     def validation_epoch_end(self, outputs, mode="val"):
         # loss計算
-        epoch_preds = torch.cat([x['batch_preds'] for x in outputs])
-        epoch_labels = torch.cat([x['batch_labels'] for x in outputs])
+        epoch_preds = torch.cat([x["batch_preds"] for x in outputs])
+        epoch_labels = torch.cat([x["batch_labels"] for x in outputs])
         epoch_loss = self.criterion(epoch_preds, epoch_labels)
         self.log(f"{mode}_loss", epoch_loss, logger=True)
 
@@ -147,13 +165,14 @@ class TextClassifier(pl.LightningModule):
 
     # optimizerの設定
     def configure_optimizers(self):
-        optimizer = optim.Adam([
-            {'params': self.bert.encoder.layer[-1].parameters(), 'lr': 1e-5},
-            {'params': self.classifier.parameters(), 'lr': 1e-5}
-        ])
+        optimizer = optim.Adam(
+            [
+                {"params": self.bert.encoder.layer[-1].parameters(), "lr": 1e-5},
+                {"params": self.classifier.parameters(), "lr": 1e-5},
+            ]
+        )
 
         return [optimizer]
-
 
 
 if __name__ == "__main__":
@@ -161,49 +180,52 @@ if __name__ == "__main__":
     # data_file1 = "data/wrime/wrime-ver1.tsv"
     data_file2 = "data/wrime/wrime-ver2.tsv"
     checkpoint_dir = "data/wrime/checkpoints/"
-    df = pd.read_csv(data_file2, sep='\t')
+    df = pd.read_csv(data_file2, sep="\t")
 
-    pre_df = pd.DataFrame({'text': df['Sentence']})
+    pre_df = pd.DataFrame({"text": df["Sentence"]})
     # pre_df['sentiment'] = df['Avg. Readers_Sentiment'].apply(convert_label)
-    pre_df['sentiment'] = df['Avg. Readers_Sentiment']
-    pre_df['sentiment'] = pre_df['sentiment'].astype('float32')
-    train_df, valid_df, test_df = pre_df[:34000], pre_df[34000:], pre_df[34000:] # test_df利用しない。
+    pre_df["sentiment"] = df["Avg. Readers_Sentiment"]
+    pre_df["sentiment"] = pre_df["sentiment"].astype("float32")
+    train_df, valid_df, test_df = (
+        pre_df[:34000],
+        pre_df[34000:],
+        pre_df[34000:],
+    )  # test_df利用しない。
 
     # 用意したDataFrameの文章、ラベルのカラム名
     TEXT_COLUMN = "text"
     LABEL_COLUMN = "sentiment"
 
     # 作ったDataFrameを渡してsetup
-    data_module = CreateDataModule(train_df,valid_df,test_df)
+    data_module = CreateDataModule(train_df, valid_df, test_df)
     data_module.setup()
-
 
     # epoch数 (EarlyStopping前提)
     N_EPOCHS = 1000
 
     # モデルインスタンスを作成
-    model = TextClassifier(n_classes=3,n_epochs=N_EPOCHS)
+    model = TextClassifier(n_classes=3, n_epochs=N_EPOCHS)
 
     # EarlyStoppingの設定
     # 3epochで'val_loss'が0.05以上減少しなければ学習をストップ
     early_stop_callback = EarlyStopping(
-        monitor='val_loss',
-        min_delta=0.05,
-        patience=3,
-        mode='min')
+        monitor="val_loss", min_delta=0.05, patience=3, mode="min"
+    )
 
     # モデルの保存先
     # epoch数に応じて、「epoch=0.ckpt」のような形で指定したディレクトリに保存される
     checkpoint_callback = ModelCheckpoint(
         dirpath=checkpoint_dir,
-        filename='{epoch}',
+        filename="{epoch}",
         verbose=True,
-        monitor='val_loss',
-        mode='min'
+        monitor="val_loss",
+        mode="min",
     )
 
     # Trainerに設定
-    trainer = pl.Trainer(max_epochs=N_EPOCHS,
-                         gpus=1,
-                         callbacks=[checkpoint_callback, early_stop_callback])
+    trainer = pl.Trainer(
+        max_epochs=N_EPOCHS,
+        gpus=1,
+        callbacks=[checkpoint_callback, early_stop_callback],
+    )
     trainer.fit(model, data_module)
