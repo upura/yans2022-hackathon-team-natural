@@ -18,30 +18,14 @@ def convert_to_submit_format(df, score_column, mode="pred"):
     return pd.DataFrame(output_list)
 
 
-def run_catboost(X_train, X_test, y_train, group_df, categorical_cols=[]):
+def run_catboost(X_train, X_test, X_final, y_train, group_df, categorical_cols=[]):
     y_preds = []
+    y_finals = []
     models = []
-    oof_train = np.zeros((len(X_train),))
+    oof_train = []
     cv = GroupKFold(n_splits=5)
-    X_train = X_train.drop("product_idx", axis=1)
     X_test = X_test.drop("product_idx", axis=1)
-
-    params = {
-        "objective": "regression",
-        "metric": "rmse",
-        "num_leaves": 128,
-        "max_depth": 8,
-        "feature_fraction": 0.8,
-        "subsample_freq": 1,
-        "bagging_fraction": 0.7,
-        "min_data_in_leaf": 10,
-        "learning_rate": 0.05,
-        "boosting": "gbdt",
-        "lambda_l1": 0.4,
-        "lambda_l2": 0.4,
-        "verbosity": -1,
-        "random_state": 42,
-    }
+    X_final = X_final.drop("product_idx", axis=1)
 
     for fold_id, (train_index, valid_index) in enumerate(
         cv.split(X_train, groups=group_df)
@@ -51,63 +35,89 @@ def run_catboost(X_train, X_test, y_train, group_df, categorical_cols=[]):
         y_tr = y_train[train_index]
         y_val = y_train[valid_index]
 
+        X_tr["target"] = y_tr
+        X_val["target"] = y_val
+
+        X_tr = X_tr.sort_values("product_idx").reset_index(drop=True)
+        X_val = X_val.sort_values("product_idx").reset_index(drop=True)
+        y_tr = X_tr["target"]
+        y_val = X_val["target"]
+
+        train_pool = cb.Pool(
+            data=X_tr.drop(["target", "product_idx"], axis=1),
+            label=y_tr,
+            group_id=X_tr["product_idx"],
+            cat_features=categorical_cols,
+        )
+
+        eval_pool = cb.Pool(
+            data=X_val.drop(["target", "product_idx"], axis=1),
+            label=y_val,
+            group_id=X_val["product_idx"],
+            cat_features=categorical_cols,
+        )
+
         params = {
-            "depth": 6,
+            "depth": 8,
             "learning_rate": 0.05,
             "iterations": 10000,
-            "loss_function": "RMSE",
-            "eval_metric": "RMSE",
+            "loss_function": "YetiRank",
+            "eval_metric": "NDCG:top=5",
             "random_seed": 777,
             "allow_writing_files": False,
             "task_type": "CPU",
             "early_stopping_rounds": 200,
         }
-
-        model = cb.CatBoostRegressor(**params)
+        model = cb.CatBoost(params)
         model.fit(
-            X_tr,
-            y_tr,
-            cat_features=categorical_cols,
-            eval_set=(X_val, y_val),
+            train_pool,
+            eval_set=eval_pool,
             verbose=200,
             use_best_model=True,
             plot=False,
         )
 
-        oof_train[valid_index] = model.predict(X_val)
+        X_val["pred_helpful_votes"] = model.predict(
+            X_val.drop(["target", "product_idx"], axis=1),
+        )
+        oof_df = X_val[["product_idx", "target", "pred_helpful_votes"]]
+        oof_train.append(oof_df)
+
         joblib.dump(model, f"lgb_{fold_id}.pkl")
         models.append(model)
 
         y_pred = model.predict(X_test)
         y_preds.append(y_pred)
+        y_final = model.predict(X_final)
+        y_finals.append(y_final)
 
-    return oof_train, y_preds, models
+    return oof_train, y_preds, y_finals, models
 
 
 if __name__ == "__main__":
-    X_train = joblib.load("../input/pickle/X_train_fe004.pkl")
-    y_train = joblib.load("../input/pickle/y_train_fe004.pkl")
-    X_test = joblib.load("../input/pickle/X_test_fe004.pkl")
-    X_test.head()
+    run_name = "cat000"
+    X_train = joblib.load("../input/pickle/X_train_fe014.pkl")
+    y_train = joblib.load("../input/pickle/y_train_fe014.pkl")
+    X_test = joblib.load("../input/pickle/X_test_fe014.pkl")
+    X_final = joblib.load("../input/pickle/X_final_fe014.pkl")
+    y_train = y_train.astype(int)
+    print(X_train.shape, X_test.shape, X_final.shape)
 
     categorical_cols = [
         "product_category",
-        "star_rating",
         "vine",
         "verified_purchase",
         "customer_idx",
     ]
-    oof_train, y_preds, models = run_catboost(
-        X_train, X_test, y_train, X_train["product_idx"], categorical_cols
+    oof_train, y_preds, y_finals, models = run_catboost(
+        X_train, X_test, X_final, y_train, X_train["product_idx"], categorical_cols
     )
 
-    df = pd.read_json("../input/yans2022/training.jsonl", orient="records", lines=True)
-    df["pred_helpful_votes"] = oof_train
-    np.save("oof_train_cat", oof_train)
-
+    df = pd.concat(oof_train)
+    df["review_idx"] = np.arange(len(df))
+    df.to_csv(f"oof_df{run_name}.csv", index=False)
     df_pred = convert_to_submit_format(df, "pred_helpful_votes", "pred")
-
-    df_true = convert_to_submit_format(df, "helpful_votes", "true")
+    df_true = convert_to_submit_format(df, "target", "true")
     df_merge = pd.merge(df_pred, df_true, on="product_idx")
 
     sum_ndcg = 0
@@ -128,7 +138,16 @@ if __name__ == "__main__":
         "../input/yans2022/leader_board.jsonl", orient="records", lines=True
     )
     df["pred_helpful_votes"] = np.average(y_preds, axis=0)
-    np.save("y_pred_cat", np.average(y_preds, axis=0))
+    np.save(f"y_pred{run_name}", np.average(y_preds, axis=0))
     df_pred = convert_to_submit_format(df, "pred_helpful_votes", "pred")
-    output_pred_file = "submission_run000.jsonl"
+    output_pred_file = f"submission_lb{run_name}.jsonl"
+    df_pred.to_json(output_pred_file, orient="records", force_ascii=False, lines=True)
+
+    df = pd.read_json(
+        "../input/yans2022/final_result.jsonl", orient="records", lines=True
+    )
+    df["pred_helpful_votes"] = np.average(y_finals, axis=0)
+    np.save(f"y_final{run_name}", np.average(y_finals, axis=0))
+    df_pred = convert_to_submit_format(df, "pred_helpful_votes", "pred")
+    output_pred_file = f"submit_final_result{run_name}.jsonl"
     df_pred.to_json(output_pred_file, orient="records", force_ascii=False, lines=True)
