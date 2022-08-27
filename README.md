@@ -2,6 +2,8 @@
 
 ## Setup
 
+Google Colab Pro+ を利用
+
 ```bash
 # install MeCab
 !apt-get -q -y install sudo file mecab libmecab-dev mecab-ipadic-utf8 git curl python-mecab > /dev/null
