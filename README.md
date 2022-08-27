@@ -30,9 +30,9 @@ cp /etc/mecabrc /usr/local/etc/
 
 ```bash
 cd path_to/experiments
-!python create_features.py
+!python create_features014.py
 !python run_lgbm_rank.py
 ```
 
-- create_features.py: 特徴量を生成
+- create_features014.py: 特徴量を生成
 - run_lgbm_rank.py: LightGBM で学習・予測
