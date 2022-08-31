@@ -1,5 +1,8 @@
 # NLP若手の会 (YANS) 第17回シンポジウム ハッカソン (2022) 
 
+- ECサイトAmazonのレビューデータを用いた特定の評価指標による[コンペティション](https://yans.anlp.jp/entry/yans2022hackathon)
+- 最終評価で1位を獲得し、ハッカソンスポンサーのアマゾンウェブサービスジャパン合同会社から「Applied Scientist賞」も受賞
+
 ## Setup
 
 Google Colab Pro+ を利用
@@ -38,6 +41,7 @@ cd path_to/experiments
 ```
 
 - create_features018.py: 特徴量を生成
+    - [kaggle_utils](https://github.com/Ynakatsuka/kaggle_utils) を一部で利用
 - additional_pretraining.py
     - [WRIME: 主観と客観の感情分析データセット](https://github.com/ids-cv/wrime)のwrime-ver2.tsvを用いて学習するコード
     - Ref. [Pytorch Lightningを使用したBERT文書分類モデルの実装](https://qiita.com/tchih11/items/7e97db29b95cf08fdda0)
